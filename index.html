@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2305060F'/%3E%3Cpolygon points='16,2 30,26 2,26' fill='%2300B4D8'/%3E%3Crect x='13' y='6' width='6' height='22' rx='3' fill='%23E9ECEF'/%3E%3C/svg%3E" />
+  <title>1942 Infinite — Endless Vertical Shoot 'em Up</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #05060F;
+      overflow: hidden;
+      touch-action: none;
+      overscroll-behavior: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      font-family: "Press Start 2P", monospace;
+    }
+
+    #game-container {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #05060F;
+      overflow: hidden;
+      touch-action: none;
+      padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    }
+
+    #game-container canvas {
+      display: block;
+      margin: 0 !important;
+      border: 1px solid #415A77;
+      box-shadow: 0 0 24px rgba(0, 180, 216, 0.14);
+      touch-action: none;
+      image-rendering: pixelated;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
