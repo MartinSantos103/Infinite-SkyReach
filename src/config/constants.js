@@ -224,6 +224,7 @@ export const BOSS_STATS = {
     missileDamage: 18,
     missileDefLoss: 2,
     missileSpeed: 145,
+    missileLifetimeMs: 5000,
     escortIntervalMs: 7000,
     score: 3000,
     xp: 180

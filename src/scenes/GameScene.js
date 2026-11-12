@@ -56,6 +56,16 @@ export class GameScene extends Phaser.Scene {
       runChildUpdate: false
     });
 
+    this.bossGroup = this.physics.add.group({
+      runChildUpdate: false
+    });
+
+    this.events.on('boss-spawned', (boss) => {
+      if (this.bossGroup && boss) {
+        this.bossGroup.add(boss);
+      }
+    });
+
     // 3. Instanciar Jugador en el 40% inferior
     this.player = new Player(this, GAME_WIDTH / 2, 610);
 
@@ -76,6 +86,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   setupCollisions() {
+    // Proyectiles del jugador contra el cuerpo principal del Jefe de Sector
+    this.physics.add.overlap(
+      this.playerBullets,
+      this.bossGroup,
+      (bullet, boss) => {
+        if (!bullet.active || !boss.active || boss.isDead) return;
+        const dmg = bullet.damage || 16;
+        const bx = bullet.x;
+        const by = bullet.y;
+        this.deactivateBullet(bullet);
+        boss.takeDamage(dmg, bx, by);
+      },
+      null,
+      this
+    );
+
     // A. Proyectiles del jugador contra enemigos comunes, minas, misiles corrosivos y drones orbitales
     this.physics.add.overlap(
       this.playerBullets,
@@ -181,6 +207,7 @@ export class GameScene extends Phaser.Scene {
     const hbH = Math.max(4, Math.round(b.height * COMBAT_LIMITS.BULLET_HITBOX_RATIO));
     b.body.setSize(hbW, hbH);
     b.body.setOffset((b.width - hbW) / 2, (b.height - hbH) / 2);
+    b.body.reset(x, y);
     b.body.setVelocity(vx, vy);
     return b;
   }
@@ -216,6 +243,7 @@ export class GameScene extends Phaser.Scene {
     const hbH = Math.max(4, Math.round(b.height * COMBAT_LIMITS.BULLET_HITBOX_RATIO));
     b.body.setSize(hbW, hbH);
     b.body.setOffset((b.width - hbW) / 2, (b.height - hbH) / 2);
+    b.body.reset(x, y);
     b.body.setVelocity(vx, vy);
     return b;
   }
@@ -277,6 +305,9 @@ export class GameScene extends Phaser.Scene {
     this.clearAllEnemyBullets();
     this.activeBoss = null;
     this.activeGravityPull = null;
+    if (this.bossGroup) {
+      this.bossGroup.clear();
+    }
     soundManager.setBossMode(false);
 
     // Primero actualizar progresión de Sector y Etapa en WaveManager
@@ -412,26 +443,12 @@ export class GameScene extends Phaser.Scene {
     // 3. Actualizar sistema de oleadas y distancia
     this.waveManager.update(dtSeconds, delta);
 
-    // 4. Comprobar colisiones con el Jefe activo (proyectiles del jugador y choque físico múltiple)
+    // 4. Comprobar colisiones con el Jefe activo (choque físico múltiple)
     if (this.activeBoss && this.activeBoss.active && !this.activeBoss.isDead) {
       soundManager.setBossMode(true);
-
-      // Balas del jugador contra el cuerpo del Jefe
-      this.physics.overlap(
-        this.playerBullets,
-        this.activeBoss,
-        (first, second) => {
-          const bullet = first === this.activeBoss ? second : first;
-          if (!bullet || !bullet.active || !this.activeBoss || this.activeBoss.isDead) return;
-          const dmg = bullet.damage || 16;
-          const bx = bullet.x;
-          const by = bullet.y;
-          this.deactivateBullet(bullet);
-          this.activeBoss.takeDamage(dmg, bx, by);
-        },
-        null,
-        this
-      );
+      if (this.bossGroup && !this.bossGroup.contains(this.activeBoss)) {
+        this.bossGroup.add(this.activeBoss);
+      }
 
       // Sección 4.3: Colisión física del jugador contra el cuerpo del Jefe:
       // Los jefes no mueren al chocar. El jugador sufre un rebote físico, recibe daño porcentual,

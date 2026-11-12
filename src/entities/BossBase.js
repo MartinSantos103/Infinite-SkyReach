@@ -39,12 +39,19 @@ export class CorrosiveMissile extends EnemyBase {
     this.speed = BOSS_STATS.VALKIRIA.missileSpeed * speedMult;
     this.currentAngle = Math.PI / 2; // Hacia abajo (+Y)
     this.trailTimer = 0;
+    this.lifetimeTimer = BOSS_STATS.VALKIRIA.missileLifetimeMs || 5000;
 
     this.body.setSize(10, 18);
     this.body.setOffset(1, 3);
   }
 
   updateBehavior(_time, delta) {
+    this.lifetimeTimer -= delta;
+    if (this.lifetimeTimer <= 0) {
+      this.die(false);
+      return;
+    }
+
     // Guiado suave hacia la posición actual del jugador
     if (this.scene.player && !this.scene.player.isDead) {
       const targetAngle = Math.atan2(

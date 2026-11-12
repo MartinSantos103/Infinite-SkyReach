@@ -122,6 +122,7 @@ describe('1942 Infinite — Especificación Técnica y Fórmulas Matemáticas', 
     expect(BOSS_STATS.VALKIRIA.cannonHp).toBe(1150);
     expect(BOSS_STATS.VALKIRIA.missileDamage).toBe(18);
     expect(BOSS_STATS.VALKIRIA.missileDefLoss).toBe(2);
+    expect(BOSS_STATS.VALKIRIA.missileLifetimeMs).toBe(5000);
 
     expect(BOSS_STATS.ESPECTRO.hp).toBe(7500);
     expect(BOSS_STATS.ESPECTRO.empTelegraphMs).toBe(1000);
