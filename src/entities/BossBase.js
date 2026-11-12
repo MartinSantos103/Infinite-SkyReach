@@ -6,7 +6,13 @@ import {
   getSectorMultipliers
 } from '../config/constants.js';
 import { PALETTE } from '../config/palette.js';
-import { EnemyBase, LightFighter } from './EnemyBase.js';
+import {
+  EnemyBase,
+  LightFighter,
+  TacticalFighter,
+  StealthInterceptor,
+  HeavyBomber
+} from './EnemyBase.js';
 import { soundManager } from '../systems/SoundManager.js';
 
 /**
@@ -160,7 +166,7 @@ export class BossBase extends Phaser.Physics.Arcade.Sprite {
 
     const mults = getSectorMultipliers(sector);
     const rawHp = stats.hp || stats.coreHp + (stats.cannonHp || 0) * 2;
-    this.maxHp = Math.round(rawHp * mults.hp);
+    this.maxHp = Math.round(rawHp * (mults.bossHp ?? mults.hp));
     this.hp = this.maxHp;
 
     this.collisionDamage = stats.collisionDamage || 14;
@@ -315,7 +321,7 @@ export class ValkiriaBoss extends BossBase {
     );
 
     const mults = getSectorMultipliers(sector);
-    const cannonMaxHp = Math.round(BOSS_STATS.VALKIRIA.cannonHp * mults.hp);
+    const cannonMaxHp = Math.round(BOSS_STATS.VALKIRIA.cannonHp * (mults.bossHp ?? mults.hp));
 
     // Núcleo central rojo que pulsa
     this.coreSprite = scene.add
@@ -497,8 +503,8 @@ export class ValkiriaBoss extends BossBase {
 
   fireCannons() {
     if (!this.scene.spawnEnemyBullet) return;
-    const { bulletSpeed: speedMult } = getSectorMultipliers(this.sector);
-    const speed = 195 * speedMult;
+    const { bulletSpeed: speedMult, bossBulletSpeed } = getSectorMultipliers(this.sector);
+    const speed = 195 * (bossBulletSpeed ?? speedMult);
     const dmg = BOSS_STATS.VALKIRIA.bulletDamage;
 
     // Núcleo central siempre dispara 2 proyectiles (50% del volumen total de 4)
@@ -511,7 +517,9 @@ export class ValkiriaBoss extends BossBase {
         Math.cos(rad) * speed,
         Math.sin(rad) * speed,
         dmg,
-        'bullet_enemy_std'
+        'bullet_enemy_std',
+        0,
+        true
       );
     }
 
@@ -523,7 +531,9 @@ export class ValkiriaBoss extends BossBase {
         -25,
         speed,
         dmg,
-        'bullet_enemy_std'
+        'bullet_enemy_std',
+        0,
+        true
       );
     }
     if (this.rightCannon && !this.rightCannon.destroyedState) {
@@ -533,7 +543,9 @@ export class ValkiriaBoss extends BossBase {
         25,
         speed,
         dmg,
-        'bullet_enemy_std'
+        'bullet_enemy_std',
+        0,
+        true
       );
     }
   }
@@ -546,8 +558,16 @@ export class ValkiriaBoss extends BossBase {
     this.scene.enemies.add(mRight);
   }
 
+  onEntranceComplete() {
+    if (!this.scene.enemies || this.isDead) return;
+    const fLeft = new LightFighter(this.scene, Math.max(36, this.x - 90), this.y + 10, this.sector);
+    const fRight = new LightFighter(this.scene, Math.min(GAME_WIDTH - 36, this.x + 90), this.y + 10, this.sector);
+    this.scene.enemies.add(fLeft);
+    this.scene.enemies.add(fRight);
+  }
+
   deployEscort() {
-    if (!this.scene.enemies) return;
+    if (!this.scene.enemies || this.isDead) return;
     // Compuerta inferior se abre con un destello amarillo antes de invocar la escolta (Sección 10.7)
     this.hatchGlow.setAlpha(1);
     this.scene.tweens.add({
@@ -556,10 +576,17 @@ export class ValkiriaBoss extends BossBase {
       duration: 550,
       onComplete: () => {
         if (this.isDead || !this.active || !this.scene.enemies) return;
-        const f1 = new LightFighter(this.scene, this.x - 50, this.y + 32, this.sector);
-        const f2 = new LightFighter(this.scene, this.x + 50, this.y + 32, this.sector);
+        const targetX = this.scene.player ? this.scene.player.x : this.x;
+        const f1 = new LightFighter(this.scene, this.x - 45, this.y + 32, this.sector, targetX - 45);
+        const f2 = new TacticalFighter(this.scene, this.x + 45, this.y + 32, this.sector);
         this.scene.enemies.add(f1);
         this.scene.enemies.add(f2);
+
+        // Si está en fase furia (< 40% vida), despliega un caza adicional
+        if (this.getHpRatio() < 0.40) {
+          const f3 = new LightFighter(this.scene, this.x, this.y + 36, this.sector, targetX);
+          this.scene.enemies.add(f3);
+        }
       }
     });
   }
@@ -606,10 +633,46 @@ export class EspectroBoss extends BossBase {
     this.empTimer = 0;
     this.empHitApplied = false;
     this.empGraphics = scene.add.graphics().setDepth(35);
+    this.escortTimer = BOSS_STATS.ESPECTRO.escortIntervalMs || 8000;
+  }
+
+  onEntranceComplete() {
+    if (!this.scene.enemies || this.isDead) return;
+    const s1 = new StealthInterceptor(this.scene, Math.max(40, this.x - 70), this.y + 10, this.sector, this.y + 85);
+    const s2 = new TacticalFighter(this.scene, Math.min(GAME_WIDTH - 40, this.x + 70), this.y + 10, this.sector);
+    this.scene.enemies.add(s1);
+    this.scene.enemies.add(s2);
+  }
+
+  deployEscort() {
+    if (!this.scene.enemies || this.isDead || !this.active) return;
+    const ring = this.scene.add
+      .image(this.x, this.y, 'fx_ring_violet')
+      .setScale(0.5)
+      .setDepth(34);
+    this.scene.tweens.add({
+      targets: ring,
+      scale: 1.6,
+      alpha: 0,
+      duration: 350,
+      onComplete: () => ring.destroy()
+    });
+
+    const s1 = new StealthInterceptor(this.scene, Math.max(45, this.x - 65), this.y + 20, this.sector, this.y + 95);
+    const s2 = new TacticalFighter(this.scene, Math.min(GAME_WIDTH - 45, this.x + 65), this.y + 20, this.sector);
+    this.scene.enemies.add(s1);
+    this.scene.enemies.add(s2);
   }
 
   updateBossBehavior(_time, delta) {
     this.empGraphics.clear();
+
+    // Despliegue periódico de escoltas fantasmales
+    this.escortTimer -= delta;
+    if (this.escortTimer <= 0) {
+      this.deployEscort();
+      this.escortTimer = BOSS_STATS.ESPECTRO.escortIntervalMs || 8000;
+    }
 
     // 1. Espiral Sónica rotatoria 360°
     if (this.state === 'IDLE') {
@@ -670,6 +733,7 @@ export class EspectroBoss extends BossBase {
       ) {
         this.empHitApplied = true;
         this.scene.player.takeHit(BOSS_STATS.ESPECTRO.empDamage, {
+          isBoss: true,
           defLossRatio: BOSS_STATS.ESPECTRO.empDefLossRatio, // Elimina 30% de DEF actual
           disableFireMs: BOSS_STATS.ESPECTRO.empDisableMs  // Desactiva disparo 1.5 s
         });
@@ -738,6 +802,11 @@ export class EspectroBoss extends BossBase {
           onComplete: () => {
             this.state = 'IDLE';
             this.actionTimer = 1100;
+
+            if (Math.random() < 0.50 && this.scene.enemies && !this.isDead) {
+              const ambusher = new StealthInterceptor(this.scene, targetX, this.entryTargetY + 20, this.sector);
+              this.scene.enemies.add(ambusher);
+            }
           }
         });
       }
@@ -775,8 +844,8 @@ export class EspectroBoss extends BossBase {
 
   fireSonicSpiral() {
     if (!this.scene.spawnEnemyBullet) return;
-    const { bulletSpeed: speedMult } = getSectorMultipliers(this.sector);
-    const speed = BOSS_STATS.ESPECTRO.spiralBulletSpeed * speedMult;
+    const { bulletSpeed: speedMult, bossBulletSpeed } = getSectorMultipliers(this.sector);
+    const speed = BOSS_STATS.ESPECTRO.spiralBulletSpeed * (bossBulletSpeed ?? speedMult);
     const count = 10;
     this.spiralAngle += 0.35;
 
@@ -788,7 +857,9 @@ export class EspectroBoss extends BossBase {
         Math.cos(angle) * speed,
         Math.sin(angle) * speed,
         BOSS_STATS.ESPECTRO.spiralDamage,
-        'bullet_sonic_ring'
+        'bullet_sonic_ring',
+        0,
+        true
       );
     }
   }
@@ -847,10 +918,25 @@ export class LeviatanBoss extends BossBase {
 
     this.orbitalDrones = [];
     this.droneRespawnTimer = 9500;
+    this.escortTimer = BOSS_STATS.LEVIATAN.escortIntervalMs || 9000;
   }
 
   onEntranceComplete() {
     this.spawnDroneBarrier();
+    if (this.scene.enemies && !this.isDead) {
+      const eLeft = new TacticalFighter(this.scene, Math.max(40, this.x - 110), this.y, this.sector);
+      const eRight = new TacticalFighter(this.scene, Math.min(GAME_WIDTH - 40, this.x + 110), this.y, this.sector);
+      this.scene.enemies.add(eLeft);
+      this.scene.enemies.add(eRight);
+    }
+  }
+
+  deployEscort() {
+    if (!this.scene.enemies || this.isDead || !this.active) return;
+    const f1 = new LightFighter(this.scene, this.x - 60, this.y + 40, this.sector);
+    const f2 = new TacticalFighter(this.scene, this.x + 60, this.y + 40, this.sector);
+    this.scene.enemies.add(f1);
+    this.scene.enemies.add(f2);
   }
 
   spawnDroneBarrier() {
@@ -878,6 +964,13 @@ export class LeviatanBoss extends BossBase {
   updateBossBehavior(time, delta) {
     this.updateAttachments(time, delta);
     this.gravityGraphics.clear();
+
+    // Despliegue periódico de escoltas orbitales
+    this.escortTimer -= delta;
+    if (this.escortTimer <= 0) {
+      this.deployEscort();
+      this.escortTimer = BOSS_STATS.LEVIATAN.escortIntervalMs || 9000;
+    }
 
     // Movimiento orbital suave o acercamiento al borde del jugador durante el Pozo Gravitatorio
     const targetX = GAME_WIDTH / 2 + Math.sin(this.ageMs * 0.0012) * 75;
@@ -961,8 +1054,8 @@ export class LeviatanBoss extends BossBase {
 
   fireAcidPlasmaCross() {
     if (!this.scene.spawnEnemyBullet) return;
-    const { bulletSpeed: speedMult } = getSectorMultipliers(this.sector);
-    const speed = BOSS_STATS.LEVIATAN.acidBulletSpeed * speedMult;
+    const { bulletSpeed: speedMult, bossBulletSpeed } = getSectorMultipliers(this.sector);
+    const speed = BOSS_STATS.LEVIATAN.acidBulletSpeed * (bossBulletSpeed ?? speedMult);
     const dmg = BOSS_STATS.LEVIATAN.acidDamage;
     this.acidPatternStep++;
 
@@ -984,7 +1077,8 @@ export class LeviatanBoss extends BossBase {
           Math.sin(rad) * speed,
           dmg,
           'bullet_acid_drop',
-          BOSS_STATS.LEVIATAN.acidDefLoss // -1 DEF al impactar
+          BOSS_STATS.LEVIATAN.acidDefLoss, // -1 DEF al impactar
+          true
         );
       }
     }

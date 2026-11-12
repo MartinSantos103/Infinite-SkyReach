@@ -28,7 +28,10 @@ export class EnemyBase extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
 
     const mults = getSectorMultipliers(sector);
-    this.maxHp = Math.round(stats.hp * mults.hp);
+    const hpMult = (stats.isBossThreat || stats.id === 'CORROSIVE_MISSILE' || stats.id === 'ORBITAL_DRONE')
+      ? (mults.bossHp ?? mults.hp)
+      : mults.hp;
+    this.maxHp = Math.round(stats.hp * hpMult);
     this.hp = this.maxHp;
     this.collisionDamage = stats.collisionDamage;
     this.bulletDamage = stats.bulletDamage || 0;
@@ -208,6 +211,8 @@ export class LightFighter extends EnemyBase {
     if (nearCorvette !== this.isBoosted) {
       this.isBoosted = nearCorvette;
       this.applyCurrentVelocity();
+    } else if (this.body && this.body.velocity.x === 0 && this.body.velocity.y === 0) {
+      this.applyCurrentVelocity();
     }
 
     if (this.boostRing) {
@@ -267,7 +272,7 @@ export class TacticalFighter extends EnemyBase {
     const waveArg = this.ageMs * this.frequency + this.phaseOffset;
     const targetX = this.baseX + Math.sin(waveArg) * this.amplitude;
     const vx = (targetX - this.x) * 8;
-    this.body.setVelocityX(vx);
+    this.body.setVelocity(vx, ENEMY_STATS.TACTICAL_FIGHTER.speed);
 
     // Se inclina unos 15 grados siguiendo su onda senoidal (Sección 10.6)
     const tilt = Math.cos(waveArg) * 15;
@@ -349,6 +354,10 @@ export class HeavyBomber extends EnemyBase {
   }
 
   updateBehavior(_time, delta) {
+    if (this.body && this.body.velocity.y === 0) {
+      this.body.setVelocityY(ENEMY_STATS.HEAVY_BOMBER.speed);
+    }
+
     // Actualizar posición y giro de hélices
     for (const r of this.rotors) {
       r.setPosition(this.x + r.ox, this.y + r.oy);
@@ -419,7 +428,7 @@ export class HeavyBomber extends EnemyBase {
  * Vida baja-media (35 HP), Daño de proyectil (14%), Daño de embestida (18%).
  */
 export class StealthInterceptor extends EnemyBase {
-  constructor(scene, x, y, sector = 1) {
+  constructor(scene, x, y, sector = 1, customBrakeY = null) {
     super(
       scene,
       x,
@@ -432,7 +441,7 @@ export class StealthInterceptor extends EnemyBase {
 
     this.setAlpha(ENEMY_STATS.STEALTH_INTERCEPTOR.stealthAlpha);
     this.state = 'APPROACH'; // 'APPROACH' -> 'BRAKE_AIM' -> 'DASH'
-    this.brakeY = 120 + Math.random() * 95;
+    this.brakeY = customBrakeY !== null ? customBrakeY : Math.max(y + 75, 120 + Math.random() * 95);
     this.brakeTimer = ENEMY_STATS.STEALTH_INTERCEPTOR.brakeDurationMs;
     this.dashDirX = 0;
     this.dashDirY = 1;
@@ -446,6 +455,9 @@ export class StealthInterceptor extends EnemyBase {
     this.laserGraphics.clear();
 
     if (this.state === 'APPROACH') {
+      if (this.body && this.body.velocity.y === 0) {
+        this.body.setVelocityY(ENEMY_STATS.STEALTH_INTERCEPTOR.speed);
+      }
       if (this.y >= this.brakeY) {
         this.state = 'BRAKE_AIM';
         this.body.setVelocity(0, 0);
@@ -560,11 +572,14 @@ export class MagneticMine extends EnemyBase {
   updateBehavior(_time, delta) {
     this.angle += 0.08 * delta;
 
-    // Desviación magnética suave hacia la coordenada X del jugador
+    // Desviación magnética suave hacia la coordenada X del jugador manteniendo descenso vertical
+    const speedY = ENEMY_STATS.MINE_CORVETTE.mineSpeed;
     if (this.scene.player && !this.scene.player.isDead) {
       const dx = this.scene.player.x - this.x;
       const pullVx = Phaser.Math.Clamp(dx * 0.65, -ENEMY_STATS.MINE_CORVETTE.minePullSpeed, ENEMY_STATS.MINE_CORVETTE.minePullSpeed);
-      this.body.setVelocityX(pullVx);
+      this.body.setVelocity(pullVx, speedY);
+    } else {
+      this.body.setVelocityY(speedY);
     }
 
     // Luz roja central que parpadea (mientras no esté en flash blanco de impacto)
@@ -626,6 +641,10 @@ export class MineLayerCorvette extends EnemyBase {
   updateBehavior(_time, delta) {
     if (this.auraSprite) {
       this.auraSprite.setPosition(this.x, this.y);
+    }
+
+    if (this.body && this.body.velocity.y === 0) {
+      this.body.setVelocityY(this.vy);
     }
 
     // Rebote horizontal suave dentro del lienzo para mantener su diagonal

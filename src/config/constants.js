@@ -78,17 +78,47 @@ export function calculateMitigationPercent(def) {
 
 /**
  * Sección 7.1: Multiplicadores acumulativos por Sector (S >= 1)
- * - Vida de Enemigos y Jefes: +15% por sector adicional
- * - Velocidad de Proyectiles Enemigos: +10% por sector (tope +60%)
- * - Daño Enemigo: +4% por sector
+ * - Sectores 1 a 3 (0 a 15.000 m - Recorrido inicial con los 3 jefes):
+ *   Dificultad de enemigos básicos nerfeada en daño y vida con progresión suave.
+ *   Los 3 jefes mantienen al 100% su dificultad intacta con su escalado estándar (+15% HP, +4% daño).
+ * - Sector 4+ (> 15.000 m - Posterior al intervalo):
+ *   Dificultad de los enemigos básicos reestablecida al nivel desafiante original y levemente incrementada.
+ *   Los jefes continúan su progresión infinita.
  * @param {number} sector Nivel de sector actual (inicia en 1)
  */
 export function getSectorMultipliers(sector = 1) {
-  const steps = Math.max(0, (Number(sector) || 1) - 1);
+  const s = Math.max(1, Math.floor(Number(sector) || 1));
+  const steps = s - 1;
+
+  // Escalado estándar de los 3 jefes (dificultad 100% preservada, sin nerfeo)
+  const bossMults = {
+    bossHp: Number((1 + 0.15 * steps).toFixed(4)),
+    bossDamage: Number((1 + 0.04 * steps).toFixed(4)),
+    bossBulletSpeed: Number(Math.min(1.60, 1 + 0.10 * steps).toFixed(4))
+  };
+
+  if (s <= 3) {
+    // Fase 1: Primeros 15.000 m (Sectores 1, 2 y 3)
+    // Multiplicadores base suaves sobre las estadísticas reducidas de enemigos básicos
+    const basicTuning = {
+      1: { hp: 1.0,  damage: 1.0,  bulletSpeed: 1.0 },
+      2: { hp: 1.10, damage: 1.03, bulletSpeed: 1.05 },
+      3: { hp: 1.20, damage: 1.06, bulletSpeed: 1.10 }
+    };
+    return {
+      ...basicTuning[s],
+      ...bossMults
+    };
+  }
+
+  // Fase 2: Posterior al intervalo (Sector 4+ / > 15.000 m)
+  // Dificultad de enemigos básicos reestablecida y levemente incrementada (+5% a +10% sobre la referencia original)
+  const postSteps = s - 4;
   return {
-    hp: Number((1 + 0.15 * steps).toFixed(4)),
-    bulletSpeed: Number(Math.min(1.60, 1 + 0.10 * steps).toFixed(4)),
-    damage: Number((1 + 0.04 * steps).toFixed(4))
+    hp: Number((1.70 + 0.15 * postSteps).toFixed(4)),
+    damage: Number((1.40 + 0.04 * postSteps).toFixed(4)),
+    bulletSpeed: Number(Math.min(1.60, 1.15 + 0.05 * postSteps).toFixed(4)),
+    ...bossMults
   };
 }
 
@@ -98,10 +128,12 @@ export function getSectorMultipliers(sector = 1) {
  * @param {number} baseDamage Daño porcentual base del enemigo
  * @param {number} def Puntos de Defensa actuales del jugador
  * @param {number} sector Nivel de sector actual (1+)
+ * @param {boolean} isBoss Indica si el impacto proviene de un jefe de sector
  * @returns {number} Daño final porcentual
  */
-export function calculateFinalDamage(baseDamage, def, sector = 1) {
-  const { damage: sectorDamageMult } = getSectorMultipliers(sector);
+export function calculateFinalDamage(baseDamage, def, sector = 1, isBoss = false) {
+  const mults = getSectorMultipliers(sector);
+  const sectorDamageMult = isBoss ? mults.bossDamage : mults.damage;
   const mitigation = calculateMitigation(def);
   const scaledBase = Math.max(0, Number(baseDamage) || 0) * sectorDamageMult;
   return Number((scaledBase * (1 - mitigation)).toFixed(2));
@@ -122,13 +154,13 @@ export function getDefenseRingTier(def) {
   return 0;
 }
 
-// Sección 5: Estadísticas base de los 5 Arquetipos de Enemigos Comunes (Incrementadas)
+// Sección 5: Estadísticas base de los 5 Arquetipos de Enemigos Comunes (Nerfeadas en el Recorrido Inicial 0-15.000 m)
 export const ENEMY_STATS = {
   LIGHT_FIGHTER: {
     id: 'LIGHT_FIGHTER',
     name: 'Caza Ligero',
-    hp: 35,
-    collisionDamage: 16,
+    hp: 22,
+    collisionDamage: 12,
     bulletDamage: 0,
     speed: 255,
     width: 28,
@@ -139,9 +171,9 @@ export const ENEMY_STATS = {
   TACTICAL_FIGHTER: {
     id: 'TACTICAL_FIGHTER',
     name: 'Caza Táctico',
-    hp: 75,
-    collisionDamage: 16,
-    bulletDamage: 14,
+    hp: 48,
+    collisionDamage: 12,
+    bulletDamage: 10,
     speed: 145,
     bulletSpeed: 250,
     fireIntervalMs: 1350,
@@ -153,9 +185,9 @@ export const ENEMY_STATS = {
   HEAVY_BOMBER: {
     id: 'HEAVY_BOMBER',
     name: 'Bombardero Pesado',
-    hp: 320,
-    collisionDamage: 24,
-    bulletDamage: 20,
+    hp: 200,
+    collisionDamage: 18,
+    bulletDamage: 14,
     speed: 68,
     bulletSpeed: 175,
     fireIntervalMs: 2100,
@@ -169,10 +201,10 @@ export const ENEMY_STATS = {
   STEALTH_INTERCEPTOR: {
     id: 'STEALTH_INTERCEPTOR',
     name: 'Interceptor Furtivo',
-    hp: 65,
-    collisionDamage: 22,
-    dashDamage: 22,
-    bulletDamage: 18,
+    hp: 42,
+    collisionDamage: 16,
+    dashDamage: 16,
+    bulletDamage: 12,
     speed: 190,
     dashSpeed: 500,
     bulletSpeed: 320,
@@ -187,10 +219,10 @@ export const ENEMY_STATS = {
   MINE_CORVETTE: {
     id: 'MINE_CORVETTE',
     name: 'Corbeta Porta-Minas',
-    hp: 260,
-    collisionDamage: 22,
-    mineHp: 30,
-    mineDamage: 25,
+    hp: 170,
+    collisionDamage: 16,
+    mineHp: 20,
+    mineDamage: 18,
     speed: 78,
     mineSpeed: 105,
     minePullSpeed: 48,
@@ -245,6 +277,7 @@ export const BOSS_STATS = {
     empDamage: 18,
     spiralDamage: 15,
     spiralBulletSpeed: 195,
+    escortIntervalMs: 8000,
     score: 4500,
     xp: 240
   },
@@ -265,6 +298,7 @@ export const BOSS_STATS = {
     acidBulletSpeed: 180,
     droneCount: 4,
     droneHp: 260,
+    escortIntervalMs: 9000,
     score: 6000,
     xp: 320
   }

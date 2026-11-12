@@ -309,6 +309,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     const {
       isBossCollision = false,
+      isBoss = false,
       defLoss = 0,
       defLossRatio = 0,
       knockbackFromX = null,
@@ -323,7 +324,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.invulnTimer > 0) return false;
 
     const sector = this.scene.waveManager ? this.scene.waveManager.sector : 1;
-    const finalDamage = calculateFinalDamage(baseDamage, this.def, sector);
+    const finalDamage = calculateFinalDamage(
+      baseDamage,
+      this.def,
+      sector,
+      Boolean(isBoss || isBossCollision)
+    );
 
     this.hp = Math.max(0, Number((this.hp - finalDamage).toFixed(2)));
 

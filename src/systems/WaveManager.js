@@ -232,7 +232,7 @@ export class WaveManager {
 
     this.isBossActive = false;
     this.isBossTransitioning = false;
-    this.waveTimer = 400; // Primera oleada aún más rápida al iniciar
+    this.waveTimer = 1000; // Inicio fluido y controlado
     this.waveCounter = 0;
 
     // Bolsa barajada y registro para garantizar que los 5 arquetipos aparezcan aleatoriamente sin sequías
@@ -363,7 +363,10 @@ export class WaveManager {
       sub.delayMs -= dtMs;
       if (sub.delayMs <= 0) {
         this.pendingSubWaves.splice(i, 1);
-        this.spawnSingleArchetypeFormation(sub.archetype, sub.alignment, sub.centerX, sub.startY);
+        const currentActive = this.scene.enemies && this.scene.enemies.countActive ? this.scene.enemies.countActive(true) : 0;
+        if (currentActive < 10) {
+          this.spawnSingleArchetypeFormation(sub.archetype, sub.alignment, sub.centerX, sub.startY);
+        }
       }
     }
 
@@ -375,81 +378,57 @@ export class WaveManager {
   }
 
   /**
-   * Lanza un evento de múltiples oleadas combinando de 3 a 4 sub-oleadas de diferentes tipos
-   * de enemigos del bestiario con alineaciones definidas y mayor frecuencia.
+   * Lanza un evento de oleada nivelado: 1 formación principal inmediata y 1 sub-oleada secundaria
+   * escalonada en el tiempo (650-850 ms), con soft-cap de concurrencia y cadencia de 2.2 a 3.2 s.
    */
   spawnNextWave() {
     if (!this.scene || !this.scene.enemies) return;
 
+    // Límite de concurrencia (soft-cap): si ya hay 10 o más enemigos activos en pantalla,
+    // posponer la nueva oleada 1200 ms para dar respiro al jugador.
+    const currentActive = this.scene.enemies.countActive ? this.scene.enemies.countActive(true) : 0;
+    if (currentActive >= 10) {
+      this.waveTimer = 1200;
+      return;
+    }
+
     this.waveCounter++;
     const intensity = this.getIntensityProgress();
 
-    // Elegir de 3 a 4 arquetipos DIFERENTES para este evento multi-oleada
+    // Elegir 1 arquetipo principal y 1 secundario complementario
     const primaryType = this.pickRandomArchetype(this.lastArchetype ? [this.lastArchetype] : []);
     const secondaryType = this.pickRandomArchetype([primaryType]);
-    const tertiaryType = this.pickRandomArchetype([primaryType, secondaryType]);
-    const useFourthWave = Math.random() < Math.min(0.92, 0.55 + intensity * 0.35);
-    const quaternaryType = useFourthWave
-      ? this.pickRandomArchetype([primaryType, secondaryType, tertiaryType])
-      : null;
 
     const primaryAlign = this.pickRandomAlignmentForArchetype(primaryType);
     const secondaryAlign = this.pickRandomAlignmentForArchetype(secondaryType);
-    const tertiaryAlign = this.pickRandomAlignmentForArchetype(tertiaryType);
 
-    // Distribuir carriles horizontales para que las formaciones llenen todo el ancho
-    const laneLeft = 90 + Math.random() * 65;
-    const laneRight = GAME_WIDTH - 90 - Math.random() * 65;
-    const laneCenter = GAME_WIDTH / 2 + (Math.random() - 0.5) * 90;
+    // Distribuir carriles horizontales equilibrados
+    const laneLeft = 110 + Math.random() * 50;
+    const laneRight = GAME_WIDTH - 110 - Math.random() * 50;
+    const laneCenter = GAME_WIDTH / 2 + (Math.random() - 0.5) * 60;
 
-    // 1ª Oleada inmediata (alineación principal)
+    // 1ª Oleada inmediata (formación principal moderada)
     this.spawnSingleArchetypeFormation(primaryType, primaryAlign, laneCenter, -34);
 
-    // 2ª Oleada de diferente tipo (simultánea en flanco opuesto o con micro-desfase de 240 ms)
+    // 2ª Sub-oleada secundaria escalonada en el tiempo (650 a 850 ms) en el flanco alterno
     const secondCenterX = Math.random() < 0.5 ? laneLeft : laneRight;
-    if (Math.random() < 0.65) {
-      this.spawnSingleArchetypeFormation(secondaryType, secondaryAlign, secondCenterX, -70);
-    } else {
-      this.pendingSubWaves.push({
-        delayMs: 240,
-        archetype: secondaryType,
-        alignment: secondaryAlign,
-        centerX: secondCenterX,
-        startY: -38
-      });
-    }
-
-    // 3ª Oleada garantizada en el flanco complementario (460 ms)
-    const thirdCenterX = secondCenterX < GAME_WIDTH / 2 ? laneRight : laneLeft;
+    const secondaryDelay = 650 + Math.random() * 200;
     this.pendingSubWaves.push({
-      delayMs: 460,
-      archetype: tertiaryType,
-      alignment: tertiaryAlign,
-      centerX: thirdCenterX,
-      startY: -42
+      delayMs: secondaryDelay,
+      archetype: secondaryType,
+      alignment: secondaryAlign,
+      centerX: secondCenterX,
+      startY: -38
     });
 
-    // 4ª Oleada adicional de refuerzo para mayor densidad de oleadas (700 ms)
-    if (quaternaryType) {
-      const quaternaryAlign = this.pickRandomAlignmentForArchetype(quaternaryType);
-      const fourthCenterX = GAME_WIDTH / 2 + (Math.random() - 0.5) * 140;
-      this.pendingSubWaves.push({
-        delayMs: 700,
-        archetype: quaternaryType,
-        alignment: quaternaryAlign,
-        centerX: fourthCenterX,
-        startY: -46
-      });
-    }
-
-    // Intervalo dinámico más corto entre eventos de oleada (mayor cantidad de oleadas)
-    const baseCooldown = Math.max(760, 1220 - intensity * 320);
-    this.waveTimer = baseCooldown + Math.random() * 180;
+    // Cadencia balanceada entre eventos de oleada (2200 - 3200 ms)
+    const baseCooldown = Math.max(2200, 3200 - intensity * 800);
+    this.waveTimer = baseCooldown + Math.random() * 250;
   }
 
   /**
-   * Despliega una formación alineada de un arquetipo específico del bestiario
-   * con cantidad incrementada de enemigos por oleada.
+   * Despliega una formación balanceada de un arquetipo específico del bestiario
+   * con conteos moderados y legibles en pantalla.
    */
   spawnSingleArchetypeFormation(
     archetypeId,
@@ -460,37 +439,31 @@ export class WaveManager {
     if (!this.scene || !this.scene.enemies) return [];
 
     const intensity = this.getIntensityProgress();
-    const extraCount = Math.min(5, Math.floor(intensity * 2.4));
 
     switch (archetypeId) {
       case 'LIGHT_FIGHTER': {
-        const count = 6 + (this.waveCounter % 3) + extraCount; // 6 a 13 Cazas Ligeros en formación
+        const count = 3 + (this.waveCounter % 2) + (intensity >= 0.6 ? 1 : 0); // 3 a 5 Cazas Ligeros
         return this.spawnLightFighterWave(count, alignment, centerX, startY);
       }
 
       case 'TACTICAL_FIGHTER': {
-        const count = Math.min(9, 5 + (this.waveCounter % 2) + Math.floor(extraCount * 0.8)); // 5 a 9 Cazas Tácticos
+        const count = 2 + (this.waveCounter % 2) + (intensity >= 0.5 ? 1 : 0); // 2 a 4 Cazas Tácticos
         return this.spawnTacticalSquadron(count, alignment, centerX, startY);
       }
 
       case 'STEALTH_INTERCEPTOR': {
-        const count = Math.min(7, 3 + (this.waveCounter % 2) + Math.floor((intensity + 0.5) * 1.2)); // 3 a 7 Interceptores Furtivos
+        const count = 2 + (this.waveCounter % 2); // 2 a 3 Interceptores Furtivos
         return this.spawnStealthWave(count, alignment, centerX, startY);
       }
 
       case 'HEAVY_BOMBER': {
-        const bomberCount =
-          intensity >= 0.75 && Math.random() < 0.5
-            ? 3
-            : intensity >= 0.30 || Math.random() < 0.65
-              ? 2
-              : 1;
+        const bomberCount = intensity >= 0.85 && Math.random() < 0.35 ? 2 : 1; // 1 (o raramente 2 al final)
         return this.spawnHeavyBomberWave(bomberCount, alignment, centerX, startY);
       }
 
       case 'MINE_CORVETTE':
       default: {
-        const corvetteCount = intensity >= 0.40 || Math.random() < 0.55 ? 2 : 1;
+        const corvetteCount = 1; // Siempre 1 corbeta por oleada
         return this.spawnMineCorvetteWave(corvetteCount, alignment, centerX, startY);
       }
     }
@@ -573,19 +546,17 @@ export class WaveManager {
       this.scene.enemies.add(bomber);
       spawned.push(bomber);
 
-      // Escolta táctica de 3 Cazas Ligeros flanqueando y cubriendo al Bombardero en formación
-      const escortLeft = new LightFighter(this.scene, Math.max(32, pt.x - 52), pt.y - 24, this.sector);
+      // Escolta balanceada de 2 Cazas Ligeros flanqueando al Bombardero
+      const escortLeft = new LightFighter(this.scene, Math.max(32, pt.x - 48), pt.y - 20, this.sector);
       const escortRight = new LightFighter(
         this.scene,
-        Math.min(GAME_WIDTH - 32, pt.x + 52),
-        pt.y - 24,
+        Math.min(GAME_WIDTH - 32, pt.x + 48),
+        pt.y - 20,
         this.sector
       );
-      const escortRear = new LightFighter(this.scene, pt.x, pt.y - 44, this.sector);
       this.scene.enemies.add(escortLeft);
       this.scene.enemies.add(escortRight);
-      this.scene.enemies.add(escortRear);
-      spawned.push(escortLeft, escortRight, escortRear);
+      spawned.push(escortLeft, escortRight);
     }
     return spawned;
   }
@@ -594,7 +565,7 @@ export class WaveManager {
    * 4. Escuadrón alineado de Interceptores Furtivos
    */
   spawnStealthWave(
-    count = 3,
+    count = 2,
     alignment = 'LINE_ABREAST',
     centerX = GAME_WIDTH / 2,
     startY = -38
@@ -614,7 +585,7 @@ export class WaveManager {
   }
 
   /**
-   * 5. Corbeta Porta-Minas acompañada de formación en "V" de Cazas Ligeros (acelerados +20% por su aura)
+   * 5. Corbeta Porta-Minas acompañada de escolta reducida y controlada
    */
   spawnMineCorvetteWave(
     count = 1,
@@ -630,13 +601,17 @@ export class WaveManager {
       this.scene.enemies.add(corvette);
       spawned.push(corvette);
 
-      // Escolta de 5 Cazas Ligeros en formación "V" dentro del radio del aura ámbar (165 px)
-      const wingPositions = computeAlignmentPositions('V_WEDGE', 5, pt.x, pt.y - 34, 34, 24);
-      for (const wp of wingPositions) {
-        const f = new LightFighter(this.scene, wp.x, wp.y, this.sector);
-        this.scene.enemies.add(f);
-        spawned.push(f);
-      }
+      // Escolta moderada de 2 Cazas Ligeros
+      const escortLeft = new LightFighter(this.scene, Math.max(32, pt.x - 42), pt.y - 24, this.sector);
+      const escortRight = new LightFighter(
+        this.scene,
+        Math.min(GAME_WIDTH - 32, pt.x + 42),
+        pt.y - 24,
+        this.sector
+      );
+      this.scene.enemies.add(escortLeft);
+      this.scene.enemies.add(escortRight);
+      spawned.push(escortLeft, escortRight);
     }
     return spawned;
   }

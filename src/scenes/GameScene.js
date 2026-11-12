@@ -51,14 +51,17 @@ export class GameScene extends Phaser.Scene {
     this.enemies = this.physics.add.group({
       runChildUpdate: false
     });
+    this.enemies.defaults = {};
 
     this.bossParts = this.physics.add.group({
       runChildUpdate: false
     });
+    this.bossParts.defaults = {};
 
     this.bossGroup = this.physics.add.group({
       runChildUpdate: false
     });
+    this.bossGroup.defaults = {};
 
     this.events.on('boss-spawned', (boss) => {
       if (this.bossGroup && boss) {
@@ -146,9 +149,11 @@ export class GameScene extends Phaser.Scene {
 
         const dmg = bullet.damage || 10;
         const defLoss = bullet.defLoss || 0;
+        const isBoss = Boolean(bullet.isBoss);
         this.deactivateBullet(bullet);
         player.takeHit(dmg, {
           isBossCollision: false,
+          isBoss,
           defLoss
         });
       },
@@ -168,9 +173,15 @@ export class GameScene extends Phaser.Scene {
         // (mitigado por su DEF) y obtiene 1.5 s de invulnerabilidad post-impacto.
         const dmg = enemy.collisionDamage || 12;
         const defLoss = enemy.defLossOnHit || 0;
+        const isBoss = Boolean(
+          enemy.archetypeId === 'CORROSIVE_MISSILE' ||
+          enemy.archetypeId === 'ORBITAL_DRONE' ||
+          enemy.isBoss
+        );
         enemy.die(false);
         player.takeHit(dmg, {
           isBossCollision: false,
+          isBoss,
           defLoss
         });
       },
@@ -215,7 +226,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Object Pooling para proyectiles enemigos (con tope de 250 simultáneos - Sección 10.8)
    */
-  spawnEnemyBullet(x, y, vx, vy, damage, textureKey = 'bullet_enemy_std', defLoss = 0) {
+  spawnEnemyBullet(x, y, vx, vy, damage, textureKey = 'bullet_enemy_std', defLoss = 0, isBoss = false) {
     // Respetar tope de 250 balas enemigas activas simultáneas
     if (this.enemyBullets.countActive(true) >= COMBAT_LIMITS.MAX_ENEMY_BULLETS) {
       return null;
@@ -235,6 +246,7 @@ export class GameScene extends Phaser.Scene {
 
     b.damage = damage;
     b.defLoss = defLoss;
+    b.isBoss = Boolean(isBoss);
     // Las balas enemigas se dibujan por encima de las naves y efectos, y solo debajo del HUD (Sección 10.8)
     b.setDepth(65);
 
@@ -303,6 +315,18 @@ export class GameScene extends Phaser.Scene {
     if (this.isGameOver) return;
     this.score += boss.scoreValue || 3000;
     this.clearAllEnemyBullets();
+
+    // Destruir con explosiones las escoltas y amenazas menores activas en pantalla
+    if (this.enemies) {
+      const remainingEnemies = this.enemies.getChildren().slice();
+      for (let i = 0; i < remainingEnemies.length; i++) {
+        const e = remainingEnemies[i];
+        if (e && e.active && !e.isDead) {
+          e.die(false);
+        }
+      }
+    }
+
     this.activeBoss = null;
     this.activeGravityPull = null;
     if (this.bossGroup) {
@@ -461,6 +485,7 @@ export class GameScene extends Phaser.Scene {
             if (!this.activeBoss || this.activeBoss.isDead) return;
             this.player.takeHit(this.activeBoss.collisionDamage, {
               isBossCollision: true,
+              isBoss: true,
               defLoss: this.activeBoss.collisionDefLoss, // -1 DEF
               knockbackFromX: this.activeBoss.x,
               knockbackFromY: this.activeBoss.y

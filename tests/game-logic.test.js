@@ -57,67 +57,95 @@ describe('1942 Infinite — Especificación Técnica y Fórmulas Matemáticas', 
     expect(getDefenseRingTier(31)).toBe(5);
   });
 
-  it('verifica escalado infinito por Sector (Sección 7.1)', () => {
+  it('verifica escalado por Sector con dos fases: inicial 0-15.000 m nerfeada y posterior reestablecida incrementada (Sección 7.1)', () => {
     // Sector 1: multiplicadores base (1.0)
     expect(getSectorMultipliers(1)).toEqual({
       hp: 1,
       bulletSpeed: 1,
-      damage: 1
+      damage: 1,
+      bossHp: 1,
+      bossDamage: 1,
+      bossBulletSpeed: 1
     });
 
-    // Sector 2: +15% HP, +10% vel proyectil, +4% daño
+    // Sector 2: enemigos básicos suaves (+10% HP, +5% vel proyectil, +3% daño); jefes estándar (+15% HP, +10% vel, +4% daño)
     expect(getSectorMultipliers(2)).toEqual({
-      hp: 1.15,
-      bulletSpeed: 1.1,
-      damage: 1.04
+      hp: 1.10,
+      bulletSpeed: 1.05,
+      damage: 1.03,
+      bossHp: 1.15,
+      bossDamage: 1.04,
+      bossBulletSpeed: 1.10
     });
 
-    // Sector 3: +30% HP, +20% vel proyectil, +8% daño
+    // Sector 3: enemigos básicos (+20% HP, +10% vel, +6% daño); jefes estándar (+30% HP, +20% vel, +8% daño)
     expect(getSectorMultipliers(3)).toEqual({
-      hp: 1.3,
-      bulletSpeed: 1.2,
-      damage: 1.08
+      hp: 1.20,
+      bulletSpeed: 1.10,
+      damage: 1.06,
+      bossHp: 1.30,
+      bossDamage: 1.08,
+      bossBulletSpeed: 1.20
     });
 
-    // Sector 8 (7 pasos): vel proyectil topada en +60% (1.60)
+    // Sector 4 (> 15.000 m): enemigos básicos reestablecidos e incrementados (1.70 HP, 1.40 daño); jefes estándar (1.45 HP, 1.12 daño)
+    expect(getSectorMultipliers(4)).toEqual({
+      hp: 1.70,
+      bulletSpeed: 1.15,
+      damage: 1.40,
+      bossHp: 1.45,
+      bossDamage: 1.12,
+      bossBulletSpeed: 1.30
+    });
+
+    // Sector 8 (4 pasos posteriores sobre sector 4):
     const s8 = getSectorMultipliers(8);
-    expect(s8.bulletSpeed).toBe(1.6);
-    expect(s8.hp).toBeCloseTo(2.05, 4);
-    expect(s8.damage).toBeCloseTo(1.28, 4);
+    expect(s8.hp).toBeCloseTo(2.30, 4);
+    expect(s8.damage).toBeCloseTo(1.56, 4);
+    expect(s8.bossHp).toBeCloseTo(2.05, 4);
+    expect(s8.bossDamage).toBeCloseTo(1.28, 4);
+    expect(s8.bossBulletSpeed).toBe(1.6);
   });
 
-  it('calcula correctamente el Daño Final con Mitigación y Sector', () => {
+  it('calcula correctamente el Daño Final con Mitigación y Sector para enemigos comunes y jefes', () => {
     // 20% daño base con 3 DEF (30% mitigación) en Sector 1 => 20 * 0.70 = 14%
     expect(calculateFinalDamage(20, 3, 1)).toBe(14);
     // 20% daño base con 31 DEF (75% mitigación) en Sector 1 => 20 * 0.25 = 5%
     expect(calculateFinalDamage(20, 31, 1)).toBe(5);
+
+    // En Sector 4: ataque de enemigo común (mult 1.40) vs ataque de jefe (mult 1.12)
+    // Enemigo común: 20 * 1.40 * 0.70 = 19.6%
+    expect(calculateFinalDamage(20, 3, 4, false)).toBe(19.6);
+    // Jefe de sector: 20 * 1.12 * 0.70 = 15.68%
+    expect(calculateFinalDamage(20, 3, 4, true)).toBe(15.68);
   });
 
-  it('verifica estadísticas base incrementadas de los 5 Arquetipos, vida masiva de los 3 Jefes y mejora de daño reducida', () => {
-    expect(ENEMY_STATS.LIGHT_FIGHTER.hp).toBe(35);
-    expect(ENEMY_STATS.LIGHT_FIGHTER.collisionDamage).toBe(16);
+  it('verifica estadísticas base nerfeadas en recorrido inicial para 5 Arquetipos, dificultad de los 3 Jefes intacta y reestablecimiento en Sector 4', () => {
+    // Estadísticas nerfeadas para el recorrido inicial (0 - 15.000 m)
+    expect(ENEMY_STATS.LIGHT_FIGHTER.hp).toBe(22);
+    expect(ENEMY_STATS.LIGHT_FIGHTER.collisionDamage).toBe(12);
     expect(ENEMY_STATS.LIGHT_FIGHTER.speed).toBe(255);
 
-    expect(ENEMY_STATS.TACTICAL_FIGHTER.hp).toBe(75);
-    expect(ENEMY_STATS.TACTICAL_FIGHTER.bulletDamage).toBe(14);
+    expect(ENEMY_STATS.TACTICAL_FIGHTER.hp).toBe(48);
+    expect(ENEMY_STATS.TACTICAL_FIGHTER.bulletDamage).toBe(10);
     expect(ENEMY_STATS.TACTICAL_FIGHTER.speed).toBe(145);
 
-    expect(ENEMY_STATS.HEAVY_BOMBER.hp).toBe(320);
-    expect(ENEMY_STATS.HEAVY_BOMBER.bulletDamage).toBe(20);
+    expect(ENEMY_STATS.HEAVY_BOMBER.hp).toBe(200);
+    expect(ENEMY_STATS.HEAVY_BOMBER.bulletDamage).toBe(14);
     expect(ENEMY_STATS.HEAVY_BOMBER.fanCount).toBe(5);
 
-    expect(ENEMY_STATS.STEALTH_INTERCEPTOR.hp).toBe(65);
-    expect(ENEMY_STATS.STEALTH_INTERCEPTOR.bulletDamage).toBe(18);
-    expect(ENEMY_STATS.STEALTH_INTERCEPTOR.dashDamage).toBe(22);
+    expect(ENEMY_STATS.STEALTH_INTERCEPTOR.hp).toBe(42);
+    expect(ENEMY_STATS.STEALTH_INTERCEPTOR.bulletDamage).toBe(12);
+    expect(ENEMY_STATS.STEALTH_INTERCEPTOR.dashDamage).toBe(16);
     expect(ENEMY_STATS.STEALTH_INTERCEPTOR.stealthAlpha).toBe(0.35);
     expect(ENEMY_STATS.STEALTH_INTERCEPTOR.brakeDurationMs).toBe(800);
 
-    expect(ENEMY_STATS.MINE_CORVETTE.hp).toBe(260);
-    expect(ENEMY_STATS.MINE_CORVETTE.mineHp).toBe(30);
-    expect(ENEMY_STATS.MINE_CORVETTE.mineDamage).toBe(25);
+    expect(ENEMY_STATS.MINE_CORVETTE.hp).toBe(170);
+    expect(ENEMY_STATS.MINE_CORVETTE.mineHp).toBe(20);
+    expect(ENEMY_STATS.MINE_CORVETTE.mineDamage).toBe(18);
     expect(ENEMY_STATS.MINE_CORVETTE.auraSpeedBoost).toBe(1.25);
 
-    // Vida de jefes incrementada en gran medida
+    // Vida y daño de los 3 Jefes mantenidos intactos al 100% (sin nerfeo)
     expect(BOSS_STATS.VALKIRIA.coreHp).toBe(4200);
     expect(BOSS_STATS.VALKIRIA.cannonHp).toBe(1150);
     expect(BOSS_STATS.VALKIRIA.missileDamage).toBe(18);
@@ -135,6 +163,23 @@ describe('1942 Infinite — Especificación Técnica y Fórmulas Matemáticas', 
     expect(BOSS_STATS.LEVIATAN.collisionDefLoss).toBe(1);
     expect(BOSS_STATS.LEVIATAN.acidDefLoss).toBe(1);
     expect(BOSS_STATS.LEVIATAN.droneCount).toBe(4);
+
+    // Reestablecimiento e incremento leve posterior a los 15.000 m (Sector 4)
+    const multsS4 = getSectorMultipliers(4);
+    // Caza Ligero: 22 * 1.70 = 37.4 HP (> 35 original)
+    expect(Math.round(ENEMY_STATS.LIGHT_FIGHTER.hp * multsS4.hp)).toBe(37);
+    // Caza Táctico: 48 * 1.70 = 81.6 HP (> 75 original)
+    expect(Math.round(ENEMY_STATS.TACTICAL_FIGHTER.hp * multsS4.hp)).toBe(82);
+    // Bombardero Pesado: 200 * 1.70 = 340 HP (> 320 original)
+    expect(Math.round(ENEMY_STATS.HEAVY_BOMBER.hp * multsS4.hp)).toBe(340);
+    // Interceptor Furtivo: 42 * 1.70 = 71.4 HP (> 65 original)
+    expect(Math.round(ENEMY_STATS.STEALTH_INTERCEPTOR.hp * multsS4.hp)).toBe(71);
+    // Corbeta: 170 * 1.70 = 289 HP (> 260 original)
+    expect(Math.round(ENEMY_STATS.MINE_CORVETTE.hp * multsS4.hp)).toBe(289);
+
+    // Daño reestablecido:
+    expect(Number((ENEMY_STATS.LIGHT_FIGHTER.collisionDamage * multsS4.damage).toFixed(2))).toBe(16.8); // > 16
+    expect(Number((ENEMY_STATS.TACTICAL_FIGHTER.bulletDamage * multsS4.damage).toFixed(2))).toBe(14); // = 14
 
     // Mejora de daño reducida a +10% DAÑO
     expect(PLAYER_CONFIG.FIREPOWER_UPGRADE_MULT).toBe(1.10);
